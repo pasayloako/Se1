@@ -15,13 +15,13 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.post('/api/submit', async (req, res) => {
   const origin = req.headers.origin;
   if (!allowedOrigin.includes(origin)) {
-    return res.status(400).send('tanga mo naman sabi ni kris');
+    return res.status(400).send('pasayloako');
   }
 
   const { cookie, url, amount, interval } = req.body;
@@ -83,14 +83,28 @@ async function startShareSession(cookies, url, amount, interval) {
 }
 
 async function convertCookie(cookie) {
+  // Try to parse as JSON first (supports both Appstate with 'key' and Netscape export with 'name')
   try {
-    const cookies = JSON.parse(cookie);
-    const sb = cookies.find(c => c.key === 'sb');
-    if (!sb) throw new Error('Missing "sb" cookie in appstate.');
-
-    return cookies.map(c => `${c.key}=${c.value}`).join('; ');
-  } catch {
-    throw new Error('Invalid appstate format. Make sure it\'s a valid JSON array.');
+    const parsed = JSON.parse(cookie);
+    if (Array.isArray(parsed)) {
+      // Check if it's Appstate format (has 'key' property)
+      if (parsed[0] && parsed[0].key) {
+        const sb = parsed.find(c => c.key === 'sb');
+        if (!sb) throw new Error('Missing "sb" cookie in appstate.');
+        return parsed.map(c => `${c.key}=${c.value}`).join('; ');
+      }
+      // Check if it's Netscape export format (has 'name' property)
+      else if (parsed[0] && parsed[0].name) {
+        return parsed.map(c => `${c.name}=${c.value}`).join('; ');
+      }
+    }
+    throw new Error('Invalid JSON array format');
+  } catch (e) {
+    // If not JSON, treat as regular cookie string
+    if (typeof cookie === 'string' && (cookie.includes('=') || cookie.includes(';'))) {
+      return cookie;
+    }
+    throw new Error('Invalid cookie format. Please provide valid JSON array or cookie string.');
   }
 }
 
